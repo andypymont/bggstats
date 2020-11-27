@@ -54,16 +54,16 @@ def guild_collection_summary(guild=GUILD):
     gcs['guild_adj_average'] = gcs.apply(adjusted_average, axis='columns')
     return gcs
 
-def thirty_char_name(name):
+def forty_char_name(name):
     """Make name 30 characters long exactly, padding with spaces."""
-    if len(name) > 30:
-        return name[:27] + '...'
-    return '{:<30}'.format(name[:30])
+    if len(name) > 40:
+        return name[:37] + '...'
+    return '{:<40}'.format(name[:40])
 
 def bgg_table(dataframe, headers):
     """Run tabulate on the given dataframe, then replace game names with geeklinks."""
     if 'name' in dataframe.columns:
-        dataframe['name'] = dataframe['name'].map(thirty_char_name)
+        dataframe['name'] = dataframe['name'].map(forty_char_name)
 
     table = tabulate(dataframe, headers=headers, showindex=False, floatfmt='.4f')
 
@@ -101,6 +101,27 @@ def top20(guild):
 
     # output
     write_report('top20', gcs, ('#', 'Name', '# ratings', 'Rating'))
+
+@cli.command()
+@click.option('--guild', default=GUILD)
+def topexpansions(guild):
+    """Create a report of the guild's top 20 games."""
+    gcs = guild_collection_summary(guild)
+
+    # filter out expansions
+    is_an_expansion = (gcs['is_expansion'] == 1)
+    gcs = gcs[is_an_expansion]
+
+    # sort by adjusted average descending
+    gcs = gcs.sort_values(by='guild_adj_average', ascending=False)
+
+    # select rows and columns for output
+    gcs = gcs.loc[:, ['name', 'guild_ratings', 'guild_adj_average']]
+    gcs = gcs.head(10)
+    gcs.insert(loc=0, column='row_num', value=np.arange(1, 1+len(gcs)))
+
+    # output
+    write_report('topexpansions', gcs, ('#', 'Name', '# ratings', 'Rating'))
 
 @cli.command()
 @click.option('--guild', default=GUILD)
