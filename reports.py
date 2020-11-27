@@ -146,8 +146,38 @@ def varied(guild):
     # output
     write_report('varied', gcs, ('#', 'Name', '# ratings', 'St.Dev'))
 
-# LIKE MORE THAN BGG
-# LIKE LESS THAN BGG
+def vs_bgg(reportname, guild, ascending):
+    """Create a report comparing the guild's ratings to BGG averages."""
+    gcs = guild_collection_summary(guild)
+
+    # filter out expansions
+    is_not_an_expansion = (gcs['is_expansion'] == 0)
+    sufficiently_rated = (gcs['guild_ratings'] >= 5)
+    gcs = gcs[is_not_an_expansion & sufficiently_rated]
+
+    # add comparison to BGG and sort on it
+    gcs['vs_bgg'] = gcs['guild_average'] - gcs['bgg_average']
+    gcs = gcs.sort_values(by='vs_bgg', ascending=ascending)
+
+    # select rows and columns for output
+    gcs = gcs.loc[:, ['name', 'guild_ratings', 'vs_bgg']]
+    gcs = gcs.head(10)
+    gcs.insert(loc=0, column='row_num', value=np.arange(1, 1+len(gcs)))
+
+    # output
+    write_report(reportname, gcs, ('#', 'Name', '# ratings', 'vs BGG'))
+
+@cli.command()
+@click.option('--guild', default=GUILD)
+def morethanbgg(guild):
+    """Create a report of the guild's top 10 liked-more-than-BGG games."""
+    vs_bgg('morethanbgg', guild, False)
+
+@cli.command()
+@click.option('--guild', default=GUILD)
+def lessthanbgg(guild):
+    """Create a report of the guild's top 10 liked-less-than-BGG games."""
+    vs_bgg('lessthanbgg', guild, True)
 
 if __name__ == '__main__':
     cli()
