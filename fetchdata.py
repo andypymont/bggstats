@@ -4,7 +4,7 @@ Fetch data from BoardGameGeek for data analysis.
 
 import sqlite3
 from itertools import islice
-from boardgamegeek import BGGClient
+from bggthread import BGGClientWithThreadSupport
 import click
 
 GUILD = 901
@@ -106,7 +106,7 @@ class Database():
             cursor.executemany(SQL_UPDATE_GAMES, updates)
             self.data.commit()
 
-bgg = BGGClient()
+bgg = BGGClientWithThreadSupport()
 db = Database()
 
 @click.group()
@@ -115,15 +115,23 @@ def cli():
 
 @cli.command()
 @click.option('--guild', default=GUILD)
-def guildmembers(guild):
+@click.option('--thread', default=None)
+def guildmembers(guild, thread):
     """Fetch and update database with latest list of guild members"""
     additions = set()
     deletions = db.get_guild_members(guild)
-    for member in bgg.guild(guild).members:
+
+    members = set(bgg.guild(guild).members).union(
+        set(article.username for article in bgg.thread(thread).articles)
+        if thread else set()
+    )
+
+    for member in members:
         if member in deletions:
             deletions.remove(member)
         else:
             additions.add(member)
+
     if len(additions) + len(deletions) > 0:
         click.echo('Adding {} and deleting {} members from database'.format(
             len(additions),
