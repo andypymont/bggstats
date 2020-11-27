@@ -54,17 +54,6 @@ def guild_collection_summary(guild=GUILD):
     gcs['guild_adj_average'] = gcs.apply(adjusted_average, axis='columns')
     return gcs
 
-def top50line(pos, line):
-    """Format a line in the top-50 report for output."""
-    return '{:>3} {:<35}  {:>3}  {:.2f}  {:.2f}  {:.2f}\n'.format(
-        pos,
-        line['name'],
-        line['guild_ratings'],
-        line['guild_average'],
-        line['guild_adj_average'],
-        line['guild_std']
-    )
-
 def bgg_table(dataframe, headers):
     """Run tabulate on the given dataframe, then replace game names with geeklinks."""
     table = tabulate(dataframe, headers=headers, showindex=False)
