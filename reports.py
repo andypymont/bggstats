@@ -63,17 +63,18 @@ def forty_char_name(name):
         return name[:37] + '...'
     return '{:<40}'.format(name[:40])
 
+def add_gameid_link(forty_name, gameid):
+    """Add [thing=X][/thing] tags around a game's name, creating a link on BGG forums."""
+    link_text = forty_name.strip()
+    extra_spaces = len(forty_name) - len(link_text)
+    return '[thing={}]{}[/thing]'.format(gameid, link_text) + (' '*extra_spaces)
+
 def bgg_table(dataframe, title, headers):
     """Run tabulate on the given dataframe, then replace game names with geeklinks."""
-    if 'name' in dataframe.columns:
-        dataframe['name'] = dataframe['name'].map(forty_char_name)
-
+    dataframe['name'] = dataframe['name'].map(forty_char_name)
     table = tabulate.tabulate(dataframe, headers=headers, showindex=False, floatfmt='.4f')
-
-    if 'name' in dataframe.columns:
-        for (gameid, name) in dataframe['name'].iteritems():
-            table = table.replace(name,
-                                  '[thing={}]{}[/thing]'.format(gameid, name))
+    for (gameid, name) in dataframe['name'].iteritems():
+        table = table.replace(name, add_gameid_link(name, gameid))
     return '[b][u]{}[/u][/b]\n[c]{}[/c]'.format(title, table)
 
 def filter_gcs(dataframe, expansions, min_ratings):
