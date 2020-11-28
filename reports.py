@@ -133,7 +133,8 @@ reports = OrderedDict([
             'title': 'Most Varied Ratings',
             'expansions': 0,
             'sort_by': 'guild_std',
-            'min_ratings': 5
+            'min_ratings': 5,
+            'col_name': 'St.Dev'
         }
     ),
     (
@@ -142,7 +143,8 @@ reports = OrderedDict([
             'title':'Games Liked More than BoardGameGeek',
             'expansions': 0,
             'sort_by': 'vs_bgg',
-            'min_ratings': 5
+            'min_ratings': 5,
+            'col_name': 'vs BGG'
         }
     ),
     (
@@ -153,7 +155,8 @@ reports = OrderedDict([
             'sort_by':
             'vs_bgg',
             'sort_ascending': True,
-            'min_ratings': 5
+            'min_ratings': 5,
+            'col_name': 'vs BGG'
         }
     )
 ])
