@@ -2,13 +2,15 @@
 Run reports on the data in the local database.
 """
 
+from collections import OrderedDict
 import datetime
 import sqlite3
 import numpy as np
 import pandas as pd
 import click
-from tabulate import tabulate
+import tabulate
 
+tabulate.PRESERVE_WHITESPACE = True
 GUILD = 901
 EXTRA_RATINGS = 5
 
@@ -52,6 +54,7 @@ def guild_collection_summary(guild=GUILD):
         guild_ratings=('rating', 'count')
     )
     gcs['guild_adj_average'] = gcs.apply(adjusted_average, axis='columns')
+    gcs['vs_bgg'] = gcs['guild_average'] - gcs['bgg_average']
     return gcs
 
 def forty_char_name(name):
@@ -60,145 +63,127 @@ def forty_char_name(name):
         return name[:37] + '...'
     return '{:<40}'.format(name[:40])
 
-def bgg_table(dataframe, headers):
+def bgg_table(dataframe, title, headers):
     """Run tabulate on the given dataframe, then replace game names with geeklinks."""
     if 'name' in dataframe.columns:
         dataframe['name'] = dataframe['name'].map(forty_char_name)
 
-    table = tabulate(dataframe, headers=headers, showindex=False, floatfmt='.4f')
+    table = tabulate.tabulate(dataframe, headers=headers, showindex=False, floatfmt='.4f')
 
     if 'name' in dataframe.columns:
         for (gameid, name) in dataframe['name'].iteritems():
             table = table.replace(name,
                                   '[thing={}]{}[/thing]'.format(gameid, name))
-    return '[c]' + table + '[/c]'
+    return '[b][u]{}[/u][/b]\n[c]{}[/c]'.format(title, table)
 
-def write_report(reportname, dataframe, headers):
-    """Format the provided report and write it to the filesystem."""
+def filter_gcs(dataframe, expansions, min_ratings):
+    """Filter the provided guild collection summary based on other arguments."""
+    expansion_status = True if expansions == 'all' else (dataframe['is_expansion'] == expansions)
+    sufficient_ratings = (dataframe['guild_ratings'] >= min_ratings)
+    return dataframe[expansion_status & sufficient_ratings]
+
+def run_report(dataframe, report_settings):
+    """Return a function which will produce a report from a provided dataframe."""
+    sort_by = report_settings.get('sort_by', 'guild_adj_average')
+    sort_asc = report_settings.get('sort_ascending', False)
+
+    dataframe = filter_gcs(dataframe,
+                           report_settings.get('expansions', 'all'),
+                           report_settings.get('min_ratings', 0))
+    dataframe = dataframe.sort_values(by=sort_by, ascending=sort_asc)
+    dataframe = dataframe.loc[:, ['name', 'guild_ratings', sort_by]]
+    dataframe = dataframe.head(report_settings.get('rows', 10))
+    dataframe.insert(loc=0, column='row_num', value=np.arange(1, 1+len(dataframe)))
+    return bgg_table(
+        dataframe,
+        report_settings.get('title', 'Report'),
+        ['#', 'Name', '# ratings', report_settings.get('col_name', 'Rating')]
+    )
+
+reports = OrderedDict([
+    (
+        'top20',
+        {
+            'title': 'Top 20 Games',
+            'expansions': 0,
+            'rows': 20
+        }
+    ),
+    (
+        'top10expansions',
+        {
+            'title': 'Top 10 Expansions',
+            'expansions': 1
+        }
+    ),
+    (
+        'bottom10',
+        {
+            'title': 'Bottom 10 Games',
+            'expansions': 0,
+            'sort_by': 'guild_average',
+            'sort_ascending': True,
+            'min_ratings': 5
+        }
+    ),
+    (
+        'varied',
+        {
+            'title': 'Most Varied Ratings',
+            'expansions': 0,
+            'sort_by': 'guild_std',
+            'min_ratings': 5
+        }
+    ),
+    (
+        'morethanbgg',
+        {
+            'title':'Games Liked More than BoardGameGeek',
+            'expansions': 0,
+            'sort_by': 'vs_bgg',
+            'min_ratings': 5
+        }
+    ),
+    (
+        'lessthanbgg',
+        {
+            'title': 'Games Liked Less than BoardGameGeek',
+            'expansions': 0,
+            'sort_by':
+            'vs_bgg',
+            'sort_ascending': True,
+            'min_ratings': 5
+        }
+    )
+])
+
+@cli.command()
+def listall():
+    """List all known reports."""
+    all_reports = [
+        (name, settings.get('title', 'Untitled Report')) for (name, settings) in reports.items()
+    ]
+    click.echo(tabulate.tabulate(all_reports, headers=['Name', 'Title']))
+
+@click.option('--report_name', default='all')
+@cli.command()
+def run(report_name):
+    """Run a report and output to a text file."""
     now = datetime.datetime.now().strftime('%Y-%m-%d')
-    filename = '{} {}.txt'.format(now, reportname)
-    with open(filename, 'w') as reportfile:
-        reportfile.write(bgg_table(dataframe, headers))
-        click.echo('wrote report to {}'.format(filename))
+    filename = '{} {}.txt'.format(now, report_name)
 
-@cli.command()
-@click.option('--guild', default=GUILD)
-def top20(guild):
-    """Create a report of the guild's top 20 games."""
-    gcs = guild_collection_summary(guild)
+    outputs = [settings for (rep, settings) in reports.items() if report_name in ('all', rep)]
+    if not outputs:
+        click.echo('No report found named "{}"'.format(report_name))
+        return
 
-    # filter out expansions
-    is_not_an_expansion = (gcs['is_expansion'] == 0)
-    gcs = gcs[is_not_an_expansion]
-
-    # sort by adjusted average descending
-    gcs = gcs.sort_values(by='guild_adj_average', ascending=False)
-
-    # select rows and columns for output
-    gcs = gcs.loc[:, ['name', 'guild_ratings', 'guild_adj_average']]
-    gcs = gcs.head(20)
-    gcs.insert(loc=0, column='row_num', value=np.arange(1, 1+len(gcs)))
-
-    # output
-    write_report('top20', gcs, ('#', 'Name', '# ratings', 'Rating'))
-
-@cli.command()
-@click.option('--guild', default=GUILD)
-def topexpansions(guild):
-    """Create a report of the guild's top 20 games."""
-    gcs = guild_collection_summary(guild)
-
-    # filter out expansions
-    is_an_expansion = (gcs['is_expansion'] == 1)
-    gcs = gcs[is_an_expansion]
-
-    # sort by adjusted average descending
-    gcs = gcs.sort_values(by='guild_adj_average', ascending=False)
-
-    # select rows and columns for output
-    gcs = gcs.loc[:, ['name', 'guild_ratings', 'guild_adj_average']]
-    gcs = gcs.head(10)
-    gcs.insert(loc=0, column='row_num', value=np.arange(1, 1+len(gcs)))
-
-    # output
-    write_report('topexpansions', gcs, ('#', 'Name', '# ratings', 'Rating'))
-
-@cli.command()
-@click.option('--guild', default=GUILD)
-def bottom10(guild):
-    """Create a report of the guild's bottom 10 games with 5+ ratings."""
-    gcs = guild_collection_summary(guild)
-
-    # filter out expansions
-    is_not_an_expansion = (gcs['is_expansion'] == 0)
-    sufficiently_rated = (gcs['guild_ratings'] >= 5)
-    gcs = gcs[is_not_an_expansion & sufficiently_rated]
-
-    # sort by adjusted average descending
-    gcs = gcs.sort_values(by='guild_average', ascending=True)
-
-    # select rows and columns for output
-    gcs = gcs.loc[:, ['name', 'guild_ratings', 'guild_adj_average']]
-    gcs = gcs.head(10)
-    gcs.insert(loc=0, column='row_num', value=np.arange(1, 1+len(gcs)))
-
-    # output
-    write_report('bottom10', gcs, ('#', 'Name', '# ratings', 'Rating'))
-
-@cli.command()
-@click.option('--guild', default=GUILD)
-def varied(guild):
-    """Create a report of the guild's top 10 most varied games."""
-    gcs = guild_collection_summary(guild)
-
-    # filter out expansions
-    is_not_an_expansion = (gcs['is_expansion'] == 0)
-    sufficiently_rated = (gcs['guild_ratings'] >= 5)
-    gcs = gcs[is_not_an_expansion & sufficiently_rated]
-
-    # sort by adjusted average descending
-    gcs = gcs.sort_values(by='guild_std', ascending=False)
-
-    # select rows and columns for output
-    gcs = gcs.loc[:, ['name', 'guild_ratings', 'guild_std']]
-    gcs = gcs.head(10)
-    gcs.insert(loc=0, column='row_num', value=np.arange(1, 1+len(gcs)))
-
-    # output
-    write_report('varied', gcs, ('#', 'Name', '# ratings', 'St.Dev'))
-
-def vs_bgg(reportname, guild, ascending):
-    """Create a report comparing the guild's ratings to BGG averages."""
-    gcs = guild_collection_summary(guild)
-
-    # filter out expansions
-    is_not_an_expansion = (gcs['is_expansion'] == 0)
-    sufficiently_rated = (gcs['guild_ratings'] >= 5)
-    gcs = gcs[is_not_an_expansion & sufficiently_rated]
-
-    # add comparison to BGG and sort on it
-    gcs['vs_bgg'] = gcs['guild_average'] - gcs['bgg_average']
-    gcs = gcs.sort_values(by='vs_bgg', ascending=ascending)
-
-    # select rows and columns for output
-    gcs = gcs.loc[:, ['name', 'guild_ratings', 'vs_bgg']]
-    gcs = gcs.head(10)
-    gcs.insert(loc=0, column='row_num', value=np.arange(1, 1+len(gcs)))
-
-    # output
-    write_report(reportname, gcs, ('#', 'Name', '# ratings', 'vs BGG'))
-
-@cli.command()
-@click.option('--guild', default=GUILD)
-def morethanbgg(guild):
-    """Create a report of the guild's top 10 liked-more-than-BGG games."""
-    vs_bgg('morethanbgg', guild, False)
-
-@cli.command()
-@click.option('--guild', default=GUILD)
-def lessthanbgg(guild):
-    """Create a report of the guild's top 10 liked-less-than-BGG games."""
-    vs_bgg('lessthanbgg', guild, True)
+    with open(filename, 'w') as report_file:
+        gcs = guild_collection_summary()
+        for i, report in enumerate(outputs):
+            if i > 0:
+                report_file.write('\n\n\n')
+            report_file.write(run_report(gcs, report))
+        click.echo('Report was output to: {}'.format(filename))
 
 if __name__ == '__main__':
     cli()
