@@ -106,6 +106,8 @@ def default_dates(start, finish):
         start = datetime.datetime.fromisoformat(start)
         _, last = monthrange(start.year, start.month)
         finish = start.replace(day=last)
+    else:
+        return start, finish
 
     return start.strftime('%Y-%m-%d'), finish.strftime('%Y-%m-%d')
 
@@ -153,7 +155,7 @@ def new_to_me_row(gameid, name, rating):
         9: '#00CC00',
         10: '#00CC00'
     }
-    return '[b][BGCOLOR={}] {} [/BGCOLOR] [thing={}]{}[/thing][/b]\n\n'.format(
+    return '[b][BGCOLOR={}] {} [/BGCOLOR][/b] [thing={}]{}[/thing]\n\n'.format(
         ratingcolour.get(rating, '#A3A3A3'),
         rating or 'N/A',
         gameid,
