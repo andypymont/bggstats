@@ -22,6 +22,7 @@ SQL_SCHEMA_GAMES = """CREATE TABLE IF NOT EXISTS games (
         weight REAL,
         year INTEGER
     )"""
+SQL_SELECT_GAMES = "SELECT * FROM games"
 SQL_UPDATE_GAMES = """INSERT OR REPLACE
         INTO games (gameid, name, expansion, min_players, max_players, playing_time, rating_average, weight, year)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
@@ -56,6 +57,7 @@ SQL_SCHEMA_PLAYS = """CREATE TABLE IF NOT EXISTS plays (
         quantity INTEGER
     )"""
 SQL_SELECT_PLAYS = "SELECT * FROM plays WHERE username = ?"
+SQL_SELECT_PLAYS_ALL = "SELECT * FROM plays"
 SQL_UPDATE_PLAYS = """INSERT OR REPLACE
     INTO plays (playid, username, gameid, date, quantity)
     VALUES (?, ?, ?, ?, ?)"""
@@ -135,6 +137,29 @@ class Database():
             cursor = self.data.cursor()
             cursor.executemany(SQL_UPDATE_PLAYS, updates)
             self.data.commit()
+
+    def get_all_play_gameids(self):
+        """Return set of all gameids in users' plays in the database."""
+        cursor = self.data.cursor()
+        cursor.execute(SQL_SELECT_PLAYS_ALL)
+        return set(gameid for (_, _, gameid, _, _) in cursor.fetchall())
+
+    def get_all_gameids(self):
+        """Return all known gameids from both collections and plays in the database."""
+        return self.get_all_collection_gameids()|self.get_all_play_gameids()
+
+    def get_known_gameids(self):
+        """Return all gameids from the games table."""
+        cursor = self.data.cursor()
+        cursor.execute(SQL_SELECT_GAMES)
+        return set(gameid for (gameid, _, _, _, _, _, _, _, _) in cursor.fetchall())
+
+    def get_missing_gameids(self):
+        """
+        Return all missing gameids, i.e. those that appear in a play or collection item but aren't
+        in the games table.
+        """
+        return self.get_all_play_gameids().difference(self.get_known_gameids())
 
 bgg = BGGClientWithThreadSupport()
 db = Database()
@@ -216,9 +241,10 @@ def partition(sequence, size):
         yield list(islice(sequence, i, i + size))
 
 @cli.command()
-def games():
+@click.option('--missing-only/--all', default=False)
+def games(missing_only):
     """Fetch and update the database for all known games."""
-    gameids = list(db.get_all_collection_gameids())
+    gameids = list(db.get_missing_gameids() if missing_only else db.get_all_gameids())
     click.echo('{} total games to update'.format(len(gameids)))
     for i, chunk in enumerate(partition(gameids, 500)):
         click.echo('-- updating set {} containing {} games'.format(i+1, len(chunk)))
