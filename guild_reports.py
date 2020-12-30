@@ -1,5 +1,5 @@
 """
-Run reports on the data in the local database.
+Run guild-level reports on the data in the local database.
 """
 
 from collections import OrderedDict
