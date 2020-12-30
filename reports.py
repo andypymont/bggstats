@@ -111,6 +111,46 @@ def default_dates(start, finish):
 
     return start.strftime('%Y-%m-%d'), finish.strftime('%Y-%m-%d')
 
+def annual_report_data(plays, games, collection, year):
+    """
+    Data for the annual report including both high-level stats and also plays by game and year
+    published.
+    """
+    data = {'stats': {}}
+
+    start = datetime.datetime(year, 1, 1).strftime('%Y-%m-%d')
+    finish = datetime.datetime(year, 12, 31).strftime('%Y-%m-%d')
+
+    hindex_relevant = plays[(start <= plays['date']) & (plays['date'] <= finish)]
+
+    plays['before'] = 0
+    plays['during'] = 0
+    plays.loc[plays['date'] < start, ['before']] = plays['quantity']
+    plays.loc[(start <= plays['date']) & (plays['date'] < finish), ['during']] = plays['quantity']
+    totals = plays.groupby('gameid').agg(plays=('during', 'sum'), previous=('before', 'sum'))
+    totals = pd.merge(totals, games, left_index=True, right_on='gameid')
+    totals = totals[(totals['expansion'] == 0) & (totals['plays'] > 0)]
+    totals['sort_plays'] = -totals['plays']
+    totals = totals.sort_values(by=['sort_plays', 'name'])
+
+    new = totals[(totals['previous'] == 0) & (totals['plays'] > 0)]
+
+    years = totals.groupby('year').agg(total_plays=('plays', 'sum'))
+    years = years[years['total_plays'] > 0]
+
+    data['stats']['Total Plays'] = totals['plays'].sum()
+    data['stats']['New to Me'] = new[new['expansion'] == 0].shape[0]
+    data['stats']['Nickels'] = totals[totals['plays'] >= 5].shape[0]
+    data['stats']['Dimes'] = totals[totals['plays'] >= 10].shape[0]
+    data['stats']['H-Index'] = hindex_data(
+        hindex_relevant, games, collection, date=None
+    )[0].shape[0]
+
+    data['years'] = years
+    data['games'] = totals
+
+    return data
+
 @click.group()
 def cli():
     """Run user-level reports on the data in the local database."""
@@ -178,6 +218,41 @@ def new_to_me(start, finish):
         report_file.write('[b][u]NEW TO ME: {} - {}[/u][/b]\n\n'.format(start, finish))
         for gameid, row in new.iterrows():
             report_file.write(new_to_me_row(gameid, row['name'], int(row['rating'])))
+
+    click.echo('Report was output to: {}'.format(filename))
+
+@cli.command('annual')
+@click.option('--year', default=None)
+def annual_report(year):
+    """Create annual report of stats and games/year-published totals."""
+    report_year = year or datetime.datetime.now().year
+    plays, games, collection = base_data()
+    data = annual_report_data(plays, games, collection, report_year)
+
+    filename = '{} {}.txt'.format(report_year, 'annual')
+
+    with open(filename, 'w') as report_file:
+        report_file.write('[b]Stats[/b]\n')
+        for stat, value in data.get('stats', {}).items():
+            report_file.write('{}: {}\n'.format(stat, value))
+
+        report_file.write('\n[b]Total Plays by Year of Release[/b]')
+        for (row_num, (year_pub, plays)) in enumerate(data.get('years', pd.DataFrame()).iterrows()):
+            report_file.write('\n{}{:>4}x {}'.format(
+                '[c]' if row_num == 0 else '',
+                plays['total_plays'],
+                int(year_pub))
+            )
+
+        report_file.write('[/c]\n\n[b]Plays by Game[/b]')
+        for (row_num, (_, row)) in enumerate(data.get('games', pd.DataFrame()).iterrows()):
+            report_file.write('\n{}{:>4}x [thing={}]{}[/thing]'.format(
+                '[c]' if row_num == 0 else '',
+                row['plays'],
+                row['gameid'],
+                row['name'])
+            )
+        report_file.write('[/c]')
 
     click.echo('Report was output to: {}'.format(filename))
 
