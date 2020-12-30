@@ -92,7 +92,7 @@ def new_to_me_data(plays, games, collection, start, finish):
 
 def default_dates(start, finish):
     """Correct any missing dates by populating with appropriate defaults."""
-    if start is None and finish is None:
+    if (start is None) and (finish is None):
         # default to last month
         first = datetime.datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         finish = first - datetime.timedelta(days=1)
@@ -143,6 +143,7 @@ def hindex(date):
     click.echo('Report was output to: {}'.format(filename))
 
 def new_to_me_row(gameid, name, rating):
+    """Write a row of the new-to-me report, formatted for BGG forums."""
     ratingcolour = {
         1: '#FF3366',
         2: '#FF3366',

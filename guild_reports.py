@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import click
 import tabulate
-from reports import forty_char_name, add_gameid_link, bgg_table
+from reports import bgg_table
 
 tabulate.PRESERVE_WHITESPACE = True
 GUILD = 901
