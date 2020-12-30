@@ -2,6 +2,7 @@
 Run user-level reports on the data in the local database.
 """
 
+from calendar import monthrange
 import datetime
 import sqlite3
 import click
@@ -72,6 +73,42 @@ def hindex_data(plays, games, collection, date):
         ]
     )
 
+def new_to_me_data(plays, games, collection, start, finish):
+    """Calculate which games are new to me in the provided date range."""
+    game_data = pd.merge(games, collection).loc[:, ['gameid', 'name', 'expansion', 'rating']]
+    game_data = game_data.set_index('gameid')
+
+    plays['before'] = 0
+    plays['during'] = 0
+    plays.loc[plays['date'] < start, ['before']] = plays['quantity']
+    plays.loc[(start <= plays['date']) & (plays['date'] < finish), ['during']] = plays['quantity']
+
+    new = plays.groupby('gameid').agg(plays=('during', 'sum'), previous=('before', 'sum'))
+    new = new[(new['previous'] == 0) & (new['plays'] > 0)]
+
+    merged = pd.merge(new, game_data, left_index=True, right_index=True)
+    merged = merged[merged['expansion'] == 0]
+    return merged.loc[:, ['name', 'rating']].sort_values(by='rating', ascending=False)
+
+def default_dates(start, finish):
+    """Correct any missing dates by populating with appropriate defaults."""
+    if start is None and finish is None:
+        # default to last month
+        first = datetime.datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        finish = first - datetime.timedelta(days=1)
+        start = finish.replace(day=1)
+    elif start is None:
+        # default to start of month contaning the finish date
+        finish = datetime.datetime.fromisoformat(finish)
+        start = finish.replace(day=1)
+    elif finish is None:
+        # default to end of the month containing the start date
+        start = datetime.datetime.fromisoformat(start)
+        _, last = monthrange(start.year, start.month)
+        finish = start.replace(day=last)
+
+    return start.strftime('%Y-%m-%d'), finish.strftime('%Y-%m-%d')
+
 @click.group()
 def cli():
     """Run user-level reports on the data in the local database."""
@@ -100,6 +137,44 @@ def hindex(date):
             'Other favourite games - targets for the list',
             ['#', 'Name', 'Plays']
         ))
+
+    click.echo('Report was output to: {}'.format(filename))
+
+def new_to_me_row(gameid, name, rating):
+    ratingcolour = {
+        1: '#FF3366',
+        2: '#FF3366',
+        3: '#FF66CC',
+        4: '#FF66CC',
+        5: '#9999FF',
+        6: '#9999FF',
+        7: '#66FF99',
+        8: '#66FF99',
+        9: '#00CC00',
+        10: '#00CC00'
+    }
+    return '[b][BGCOLOR={}] {} [/BGCOLOR] [thing={}]{}[/thing][/b]\n\n'.format(
+        ratingcolour.get(rating, '#A3A3A3'),
+        rating or 'N/A',
+        gameid,
+        name
+    )
+
+@cli.command('newtome')
+@click.option('--start', default=None)
+@click.option('--finish', default=None)
+def new_to_me(start, finish):
+    """Create a report of new-to-me items in the given date range."""
+    start, finish = default_dates(start, finish)
+    plays, games, collection = base_data()
+    new = new_to_me_data(plays, games, collection, start, finish)
+
+    filename = '{} {}.txt'.format(finish or datetime.datetime.now().strftime('%Y-%m-%d'), 'newtome')
+
+    with open(filename, 'w') as report_file:
+        report_file.write('[b][u]NEW TO ME: {} - {}[/u][/b]\n\n'.format(start, finish))
+        for gameid, row in new.iterrows():
+            report_file.write(new_to_me_row(gameid, row['name'], int(row['rating'])))
 
     click.echo('Report was output to: {}'.format(filename))
 
