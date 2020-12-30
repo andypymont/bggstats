@@ -3,9 +3,10 @@ Fetch data from BoardGameGeek for data analysis.
 """
 
 import sqlite3
+from datetime import datetime
 from itertools import islice
-from bggthread import BGGClientWithThreadSupport
 import click
+from bggthread import BGGClientWithThreadSupport
 
 GUILD = 901
 USERNAME = 'NormandyWept'
@@ -47,6 +48,18 @@ SQL_UPDATE_COLLECTIONITEMS = """INSERT OR REPLACE
         INTO collectionitems (username, gameid, owned, rating)
         VALUES (?, ?, ?, ?)"""
 
+SQL_SCHEMA_PLAYS = """CREATE TABLE IF NOT EXISTS plays (
+        playid INTEGER PRIMARY KEY,
+        username TEXT,
+        gameid INTEGER,
+        date TEXT,
+        quantity INTEGER
+    )"""
+SQL_SELECT_PLAYS = "SELECT * FROM plays WHERE username = ?"
+SQL_UPDATE_PLAYS = """INSERT OR REPLACE
+    INTO plays (playid, username, gameid, date, quantity)
+    VALUES (?, ?, ?, ?, ?)"""
+
 class Database():
     """Abstract the SQL connection for use in functions in this module."""
 
@@ -59,6 +72,7 @@ class Database():
         cursor.execute(SQL_SCHEMA_GAMES)
         cursor.execute(SQL_SCHEMA_GUILDMEMBERS)
         cursor.execute(SQL_SCHEMA_COLLECTIONITEMS)
+        cursor.execute(SQL_SCHEMA_PLAYS)
         self.data.commit()
 
     def get_guild_members(self, guildid):
@@ -96,7 +110,7 @@ class Database():
             if updates:
                 cursor.executemany(SQL_UPDATE_COLLECTIONITEMS, updates)
             if deletions:
-                cursor.exeuctemany(SQL_DELETE_COLLECTIONITEMS, deletions)
+                cursor.executemany(SQL_DELETE_COLLECTIONITEMS, deletions)
             self.data.commit()
 
     def update_games(self, updates):
@@ -104,6 +118,22 @@ class Database():
         if updates:
             cursor = self.data.cursor()
             cursor.executemany(SQL_UPDATE_GAMES, updates)
+            self.data.commit()
+
+    def get_latest_play_date(self, username):
+        """Identify the latest date with plays already in the database for the given user."""
+        cursor = self.data.cursor()
+        cursor.execute(SQL_SELECT_PLAYS, (username,))
+        rows = cursor.fetchall()
+        return datetime.fromisoformat(
+            max(date for (_, _, _, date, _) in rows) if rows else '1990-01-01'
+        )
+
+    def update_plays(self, updates):
+        """Update plays per the provided list."""
+        if updates:
+            cursor = self.data.cursor()
+            cursor.executemany(SQL_UPDATE_PLAYS, updates)
             self.data.commit()
 
 bgg = BGGClientWithThreadSupport()
@@ -204,6 +234,19 @@ def games():
             game.year if game.year else None,
         ) for game in bgg.game_list(chunk)]
         db.update_games(rows)
+
+@cli.command()
+@click.option('--username', default=USERNAME)
+def plays(username):
+    """Fetch and update the database with a user's plays."""
+    latest_date = db.get_latest_play_date(username)
+    playlist = [
+        (play.id, username, play.game_id, play.date, play.quantity)
+        for play in bgg.plays(name=username, min_date=latest_date)
+    ]
+    if playlist:
+        click.echo('Recording {} plays'.format(sum(p[4] for p in playlist)))
+        db.update_plays(playlist)
 
 if __name__ == '__main__':
     cli()
