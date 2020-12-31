@@ -91,6 +91,26 @@ def new_to_me_data(plays, games, collection, start, finish):
     merged = merged[merged['expansion'] == 0]
     return merged.loc[:, ['name', 'rating']].sort_values(by='rating', ascending=False)
 
+def dust_data(plays, games, collection, start, finish):
+    """
+    Calculate games that returned from out of the dust (1+ yr no plays) during provided date
+    range.
+    """
+    game_data = pd.merge(games, collection).loc[:, ['gameid', 'name', 'expansion', 'rating']]
+    game_data = game_data.set_index('gameid')
+
+    plays['before'] = plays['date'].map(lambda date: date if date < start else np.NaN)
+    plays['during'] = plays['date'].map(lambda date: date if start <= date <= finish else np.NaN)
+
+    dusty = plays.groupby('gameid').agg(
+        last_before=('before', 'max'),
+        first_during=('during', 'min')
+    ).dropna()
+    dusty['gap'] = dusty['first_during'] - dusty['last_before']
+    dusty = dusty[dusty['gap'] > datetime.timedelta(days=365)]
+
+    return pd.merge(dusty, game_data, left_index=True, right_index=True)
+
 def default_dates(start, finish):
     """Correct any missing dates by populating with appropriate defaults."""
     if (start is None) and (finish is None):
@@ -196,7 +216,7 @@ def new_to_me_row(gameid, name, rating):
         9: '#00CC00',
         10: '#00CC00'
     }
-    return '[b][BGCOLOR={}] {} [/BGCOLOR][/b] [thing={}]{}[/thing]\n\n'.format(
+    return '\n\n[b][BGCOLOR={}] {} [/BGCOLOR][/b] [thing={}]{}[/thing]'.format(
         ratingcolour.get(rating, '#A3A3A3'),
         rating or 'N/A',
         gameid,
@@ -221,6 +241,33 @@ def new_to_me(start, finish):
         report_file.write('[b][u]NEW TO ME: {} - {}[/u][/b]\n\n'.format(start, finish))
         for gameid, row in new.iterrows():
             report_file.write(new_to_me_row(gameid, row['name'], int(row['rating'])))
+
+    click.echo('Report was output to: {}'.format(filename))
+
+@cli.command('dust')
+@click.option('--start', default=None)
+@click.option('--finish', default=None)
+def out_of_the_dust(start, finish):
+    """Create a report of out-of-the-dust items in the given date range."""
+    start, finish = default_dates(start, finish)
+    plays, games, collection = base_data()
+    dusty = dust_data(plays, games, collection, start, finish)
+
+    filename = '{} {}.txt'.format(
+        (finish or datetime.datetime.now()).strftime('%Y-%m-%d'),
+        'dust'
+    )
+
+    with open(filename, 'w') as report_file:
+        report_file.write('[b][u]OUT OF THE DUST: {} - {}[/u][/b]'.format(start, finish))
+        for gameid, row in dusty.iterrows():
+            report_file.write(new_to_me_row(gameid, row['name'], int(row['rating'])))
+            years, days = row['gap'].days // 365, row['gap'].days % 365
+            report_file.write('\n[i]{} year{}, {} days[/i]'.format(
+                years,
+                's' if years > 1 else '',
+                days
+            ))
 
     click.echo('Report was output to: {}'.format(filename))
 
