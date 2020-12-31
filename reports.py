@@ -23,6 +23,7 @@ def base_data(db_path='bgg.db', username=USERNAME):
     collectiondata = pd.read_sql_query(SQL_SELECT_COLLECTION, data, params=(username,))
     gamedata = pd.read_sql_query(SQL_SELECT_GAMES, data)
     playdata = pd.read_sql_query(SQL_SELECT_PLAYS, data, params=(username,))
+    playdata['date'] = pd.to_datetime(playdata['date'])
     return (playdata, gamedata, collectiondata)
 
 def forty_char_name(name):
@@ -81,7 +82,7 @@ def new_to_me_data(plays, games, collection, start, finish):
     plays['before'] = 0
     plays['during'] = 0
     plays.loc[plays['date'] < start, ['before']] = plays['quantity']
-    plays.loc[(start <= plays['date']) & (plays['date'] < finish), ['during']] = plays['quantity']
+    plays.loc[(start <= plays['date']) & (plays['date'] <= finish), ['during']] = plays['quantity']
 
     new = plays.groupby('gameid').agg(plays=('during', 'sum'), previous=('before', 'sum'))
     new = new[(new['previous'] == 0) & (new['plays'] > 0)]
@@ -106,10 +107,8 @@ def default_dates(start, finish):
         start = datetime.datetime.fromisoformat(start)
         _, last = monthrange(start.year, start.month)
         finish = start.replace(day=last)
-    else:
-        return start, finish
 
-    return start.strftime('%Y-%m-%d'), finish.strftime('%Y-%m-%d')
+    return start, finish
 
 def annual_report_data(plays, games, collection, year):
     """
@@ -118,15 +117,15 @@ def annual_report_data(plays, games, collection, year):
     """
     data = {'stats': {}}
 
-    start = datetime.datetime(year, 1, 1).strftime('%Y-%m-%d')
-    finish = datetime.datetime(year, 12, 31).strftime('%Y-%m-%d')
+    start = datetime.datetime(year, 1, 1)
+    finish = datetime.datetime(year, 12, 31)
 
     hindex_relevant = plays[(start <= plays['date']) & (plays['date'] <= finish)]
 
     plays['before'] = 0
     plays['during'] = 0
     plays.loc[plays['date'] < start, ['before']] = plays['quantity']
-    plays.loc[(start <= plays['date']) & (plays['date'] < finish), ['during']] = plays['quantity']
+    plays.loc[(start <= plays['date']) & (plays['date'] <= finish), ['during']] = plays['quantity']
     totals = plays.groupby('gameid').agg(plays=('during', 'sum'), previous=('before', 'sum'))
     totals = pd.merge(totals, games, left_index=True, right_on='gameid')
     totals = totals[(totals['expansion'] == 0) & (totals['plays'] > 0)]
@@ -160,12 +159,13 @@ def cli():
 def hindex(date):
     """Run a report on h-index and games desired to be in it (10-rated)."""
     plays, games, collection = base_data()
+    date = datetime.datetime.fromisoformat(date) if date else None
 
     hitems, top10items = hindex_data(plays, games, collection, date)
     hitems.insert(loc=0, column='row_num', value=np.arange(1, 1+len(hitems)))
     top10items.insert(loc=0, column='row_num', value=np.arange(1, 1+len(top10items)))
 
-    filename = '{} {}.txt'.format(date or datetime.datetime.now().strftime('%Y-%m-%d'), 'hindex')
+    filename = '{} {}.txt'.format((date or datetime.datetime.now()).strftime('%Y-%m-%d'), 'hindex')
 
     with open(filename, 'w') as report_file:
         report_file.write(bgg_table(
@@ -212,7 +212,10 @@ def new_to_me(start, finish):
     plays, games, collection = base_data()
     new = new_to_me_data(plays, games, collection, start, finish)
 
-    filename = '{} {}.txt'.format(finish or datetime.datetime.now().strftime('%Y-%m-%d'), 'newtome')
+    filename = '{} {}.txt'.format(
+        (finish or datetime.datetime.now()).strftime('%Y-%m-%d'),
+        'newtome'
+    )
 
     with open(filename, 'w') as report_file:
         report_file.write('[b][u]NEW TO ME: {} - {}[/u][/b]\n\n'.format(start, finish))
