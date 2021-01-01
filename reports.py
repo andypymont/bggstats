@@ -275,7 +275,7 @@ def out_of_the_dust(start, finish):
 @click.option('--year', default=None)
 def annual_report(year):
     """Create annual report of stats and games/year-published totals."""
-    report_year = year or datetime.datetime.now().year
+    report_year = int(year) or datetime.datetime.now().year
     plays, games, collection = base_data()
     data = annual_report_data(plays, games, collection, report_year)
 
