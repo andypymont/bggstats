@@ -233,7 +233,7 @@ def new_to_me(start, finish):
     new = new_to_me_data(plays, games, collection, start, finish)
 
     filename = '{} {}.txt'.format(
-        (finish or datetime.datetime.now()).strftime('%Y-%m-%d'),
+        finish or datetime.datetime.now().strftime('%Y-%m-%d'),
         'newtome'
     )
 
