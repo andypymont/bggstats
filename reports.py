@@ -250,6 +250,8 @@ def new_to_me(start, finish):
 def out_of_the_dust(start, finish):
     """Create a report of out-of-the-dust items in the given date range."""
     start, finish = default_dates(start, finish)
+    start = datetime.datetime.fromisoformat(start) if isinstance(start, str) else start
+    finish = datetime.datetime.fromisoformat(finish) if isinstance(finish, str) else finish
     plays, games, collection = base_data()
     dusty = dust_data(plays, games, collection, start, finish)
 
