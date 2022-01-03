@@ -16,6 +16,7 @@ SQL_SELECT_COLLECTION = "SELECT * FROM collectionitems WHERE username = ?"
 SQL_SELECT_PLAYS = "SELECT * FROM plays WHERE username = ?"
 SQL_SELECT_GAMES = "SELECT * FROM games"
 USERNAME = "NormandyWept"
+TTY_START_YEAR = 1985
 
 
 def base_data(db_path="bgg.db", username=USERNAME):
@@ -138,17 +139,44 @@ def dateplays_data(plays):
     plays["day"] = plays["date"].dt.day
     playtotals = plays.groupby(["month", "day"]).agg(plays=("quantity", "sum"))
 
-    FIRST = datetime.datetime(2000, 1, 1)
-    possible_days = [FIRST + datetime.timedelta(days=d) for d in range(366)]
+    first = datetime.datetime(2000, 1, 1)
+    possible_days = [first + datetime.timedelta(days=d) for d in range(366)]
     days = pd.DataFrame(possible_days, columns=["date"])
     days["month"] = days["date"].dt.month
     days["day"] = days["date"].dt.day
 
-    dateplays = days.join(playtotals, on=["month", "day"], how="left")
-    dateplays["plays"] = dateplays["plays"].fillna(0)
-    return dateplays.loc[:, ["month", "day", "plays"]].sort_values(
+    date_plays = days.join(playtotals, on=["month", "day"], how="left")
+    date_plays["plays"] = date_plays["plays"].fillna(0)
+    return date_plays.loc[:, ["month", "day", "plays"]].sort_values(
         by=["plays", "month", "day"]
     )
+
+
+def through_the_years_data(plays, games, year):
+    """
+    Data for the 'Through the Years' challenge: the first game of each publishing year played in
+    the given year.
+    """
+    play_data = (
+        pd.merge(
+            plays[plays["date"].dt.year == year],
+            games,
+            left_on="gameid",
+            right_on="gameid",
+            how="left",
+        )
+        .groupby(["year", "date"])
+        .agg(gameid=("gameid", "first"), name=("name", "first"))
+        .reset_index()
+        .sort_values(by=["date"])
+    )
+    first_by_year = play_data.groupby("year").agg(
+        date=("date", "first"), gameid=("gameid", "first"), name=("name", "first")
+    )
+    years = pd.DataFrame(range(TTY_START_YEAR, year + 1), columns=["year"])
+    data = pd.merge(years, first_by_year, how="left", left_on="year", right_on="year")
+    data["name"] = data["name"].fillna("")
+    return data
 
 
 def default_dates(start, finish):
@@ -276,8 +304,18 @@ def new_to_me_row(gameid, name, rating):
 
 
 def dateplays_row(month, day, plays):
+    """Write a row of the date-plays report."""
     return "{:<16} {}".format(
         datetime.datetime(2000, month, day).strftime("%d %B"), plays
+    )
+
+
+def through_the_years_row(year, date, gameid, name):
+    """Write a row of the through-the-years report."""
+    return "\n{} {} {}".format(
+        str(year),
+        "          " if date is pd.NaT else date.strftime("%Y-%m-%d"),
+        "" if np.isnan(gameid) else add_gameid_link(forty_char_name(name), int(gameid)),
     )
 
 
@@ -394,6 +432,33 @@ def dateplays():
                 "\n"
                 + dateplays_row(int(row["month"]), int(row["day"]), int(row["plays"]))
             )
+
+    click.echo("Report was output to: {}".format(filename))
+
+
+@cli.command("throughtheyears")
+@click.option("--year", default=None)
+def through_the_years(year):
+    """Report of games played (by publishing year) in the given year."""
+    report_year = int(year) if year else datetime.datetime.now().year
+
+    plays, games, _ = base_data()
+    data = through_the_years_data(plays, games, report_year)
+
+    filename = "{} {}.txt".format(report_year, "throughtheyears")
+
+    with open(filename, "w") as report_file:
+        report_file.write("[b]THROUGH THE YEARS - {}[/b]\n".format(report_year))
+        for row_num, row in data.iterrows():
+            report_file.write(
+                "{}{}".format(
+                    "[c]" if row_num == 0 else "",
+                    through_the_years_row(
+                        int(row["year"]), row["date"], row["gameid"], row["name"]
+                    ),
+                )
+            )
+        report_file.write("[/c]")
 
     click.echo("Report was output to: {}".format(filename))
 
