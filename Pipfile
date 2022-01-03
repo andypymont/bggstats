@@ -6,6 +6,7 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
+requests-cache = "==0.5.0"
 boardgamegeek2 = "*"
 pandas = "*"
 pylint = "*"
