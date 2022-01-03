@@ -130,6 +130,27 @@ def dust_data(plays, games, collection, start, finish):
     return pd.merge(dusty, game_data, left_index=True, right_index=True)
 
 
+def dateplays_data(plays):
+    """
+    Calculate the number of plays on each date in the year.
+    """
+    plays["month"] = plays["date"].dt.month
+    plays["day"] = plays["date"].dt.day
+    playtotals = plays.groupby(["month", "day"]).agg(plays=("quantity", "sum"))
+
+    FIRST = datetime.datetime(2000, 1, 1)
+    possible_days = [FIRST + datetime.timedelta(days=d) for d in range(366)]
+    days = pd.DataFrame(possible_days, columns=["date"])
+    days["month"] = days["date"].dt.month
+    days["day"] = days["date"].dt.day
+
+    dateplays = days.join(playtotals, on=["month", "day"], how="left")
+    dateplays["plays"] = dateplays["plays"].fillna(0)
+    return dateplays.loc[:, ["month", "day", "plays"]].sort_values(
+        by=["plays", "month", "day"]
+    )
+
+
 def default_dates(start, finish):
     """Correct any missing dates by populating with appropriate defaults."""
     if (start is None) and (finish is None):
@@ -254,6 +275,12 @@ def new_to_me_row(gameid, name, rating):
     )
 
 
+def dateplays_row(month, day, plays):
+    return "{:<16} {}".format(
+        datetime.datetime(2000, month, day).strftime("%d %B"), plays
+    )
+
+
 @cli.command("newtome")
 @click.option("--start", default=None)
 @click.option("--finish", default=None)
@@ -346,6 +373,27 @@ def annual_report(year):
                 )
             )
         report_file.write("[/c]")
+
+    click.echo("Report was output to: {}".format(filename))
+
+
+@cli.command("dateplays")
+def dateplays():
+    """Create a report of the dates with the fewest plays."""
+    plays, _, _ = base_data()
+    data = dateplays_data(plays)
+
+    filename = "{} {}.txt".format(
+        datetime.datetime.now().strftime("%Y-%m-%d"), "dateplays"
+    )
+
+    with open(filename, "w") as report_file:
+        report_file.write("[b]Dates with Fewest Plays[/b]\n")
+        for _, row in data.iterrows():
+            report_file.write(
+                "\n"
+                + dateplays_row(int(row["month"]), int(row["day"]), int(row["plays"]))
+            )
 
     click.echo("Report was output to: {}".format(filename))
 
