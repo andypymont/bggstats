@@ -8,24 +8,29 @@ from boardgamegeek import BGGClient
 from boardgamegeek.exceptions import BGGItemNotFoundError, BGGValueError
 from boardgamegeek.utils import DictObject, request_and_parse_xml
 
-class Article(DictObject): # pylint: disable=too-few-public-methods
+
+class Article(DictObject):  # pylint: disable=too-few-public-methods
     """
     A BoardGameGeek forum article, i.e. a single post in a thread.
 
     :param dict data: a dictionary containing the article data
     """
+
     def __init__(self, data):
         data_copy = copy(data)
 
-        for date in ('postdate', 'editdate'):
+        for date in ("postdate", "editdate"):
             if date in data_copy:
                 if not isinstance(data_copy[date], datetime.datetime):
                     try:
-                        data_copy[date] = datetime.datetime.fromisoformat(data_copy[date])
+                        data_copy[date] = datetime.datetime.fromisoformat(
+                            data_copy[date]
+                        )
                     except ValueError:
                         data_copy[date] = None
 
         super().__init__(data_copy)
+
 
 class Thread(DictObject):
     """
@@ -33,6 +38,7 @@ class Thread(DictObject):
 
     :param dict data: a dictionary containing the thread header data
     """
+
     def __init__(self, data):
         self._articles = []
         super().__init__(copy(data))
@@ -55,34 +61,34 @@ class Thread(DictObject):
         """
         return self._articles
 
+
 def create_thread_from_xml(xml_root):
     """Helper function to create a Thread object from XML input."""
 
-    if 'link' not in xml_root.attrib:
-        raise BGGItemNotFoundError('link not found')
+    if "link" not in xml_root.attrib:
+        raise BGGItemNotFoundError("link not found")
 
-    return Thread({
-        'id': int(xml_root.attrib['id']),
-        'link': xml_root.attrib['link']
-    })
+    return Thread({"id": int(xml_root.attrib["id"]), "link": xml_root.attrib["link"]})
+
 
 def add_articles_from_xml(thread, xml_root):
     """Helper function to create Article objects from XML input and add them to a Thread object."""
     added_items = False
 
-    for item in xml_root.find('articles').findall('article'):
+    for item in xml_root.find("articles").findall("article"):
         data = {
-            'id': int(item.attrib['id']),
-            'username': item.attrib['username'],
-            'link': item.attrib['link'],
-            'postdate': item.attrib['postdate'],
-            'editdate': item.attrib['editdate'],
-            'numedits': int(item.attrib['numedits']),
+            "id": int(item.attrib["id"]),
+            "username": item.attrib["username"],
+            "link": item.attrib["link"],
+            "postdate": item.attrib["postdate"],
+            "editdate": item.attrib["editdate"],
+            "numedits": int(item.attrib["numedits"]),
         }
         thread.add_article(data)
         added_items = True
 
     return added_items
+
 
 class BGGClientWithThreadSupport(BGGClient):
     """
@@ -125,12 +131,14 @@ class BGGClientWithThreadSupport(BGGClient):
         except Exception as error:
             raise BGGValueError from error
 
-        xml_root = request_and_parse_xml(self.requests_session,
-                                         self._thread_api_url,
-                                         params={'id': thread_id},
-                                         timeout=self._timeout,
-                                         retries=self._retries,
-                                         retry_delay=self._retry_delay)
+        xml_root = request_and_parse_xml(
+            self.requests_session,
+            self._thread_api_url,
+            params={"id": thread_id},
+            timeout=self._timeout,
+            retries=self._retries,
+            retry_delay=self._retry_delay,
+        )
         thread = create_thread_from_xml(xml_root)
         add_articles_from_xml(thread, xml_root)
         return thread
