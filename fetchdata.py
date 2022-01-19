@@ -18,14 +18,15 @@ SQL_SCHEMA_GAMES = """CREATE TABLE IF NOT EXISTS games (
         min_players INTEGER,
         max_players INTEGER,
         playing_time INTEGER,
+        rank INTEGER,
         rating_average REAL,
         weight REAL,
         year INTEGER
     )"""
 SQL_SELECT_GAMES = "SELECT * FROM games"
 SQL_UPDATE_GAMES = """INSERT OR REPLACE
-        INTO games (gameid, name, expansion, min_players, max_players, playing_time, rating_average, weight, year)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+        INTO games (gameid, name, expansion, min_players, max_players, playing_time, rank, rating_average, weight, year)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
 SQL_SCHEMA_GUILDMEMBERS = """CREATE TABLE IF NOT EXISTS guildmembers (
         guildid INTEGER,
@@ -270,6 +271,7 @@ def games(missing_only):
                 game.min_players if game.min_players else None,
                 game.max_players if game.max_players else None,
                 game.playing_time if game.playing_time else None,
+                game.ranks[0].value if game.ranks else None,
                 game.rating_average if game.rating_average else None,
                 game.rating_average_weight if game.rating_average_weight else None,
                 game.year if game.year else None,

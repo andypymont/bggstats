@@ -160,7 +160,7 @@ def through_the_years_data(plays, games, year):
     play_data = (
         pd.merge(
             plays[plays["date"].dt.year == year],
-            games,
+            games[games["expansion"] == 0],
             left_on="gameid",
             right_on="gameid",
             how="left",
@@ -177,6 +177,41 @@ def through_the_years_data(plays, games, year):
     data = pd.merge(years, first_by_year, how="left", left_on="year", right_on="year")
     data["name"] = data["name"].fillna("")
     return data
+
+
+def archaeologist_data(plays, games, year):
+    """
+    Data for the 'Archaeologist' challenge: games not near the top of the BGG rankings.
+    """
+    play_data = (
+        pd.merge(
+            plays[plays["date"].dt.year == year],
+            games[games["expansion"] == 0],
+            left_on="gameid",
+            right_on="gameid",
+            how="left",
+        )
+        .groupby(["rank"])
+        .agg(date=("date", "first"), gameid=("gameid", "first"), name=("name", "first"))
+        .reset_index()
+        .sort_values(by=["rank"], ascending=False)
+    )
+
+    limit = max(10_000, int(play_data["rank"].max() // 1000 + 1) * 1000)
+    bins = tuple(range(1000, limit, 1000))
+    play_data["rank_bin"] = pd.cut(
+        play_data["rank"], bins, labels=[f"{bin-999}-{bin}" for bin in bins[1:]]
+    )
+
+    data = play_data.groupby("rank_bin").agg(
+        rank=("rank", "first"),
+        date=("date", "first"),
+        gameid=("gameid", "first"),
+        name=("name", "first"),
+    )
+    data["name"] = data["name"].fillna("")
+    data["rank"] = data["rank"].fillna(-1)
+    return data.reset_index()
 
 
 def default_dates(start, finish):
@@ -314,6 +349,16 @@ def through_the_years_row(year, date, gameid, name):
     """Write a row of the through-the-years report."""
     return "\n{} {} {}".format(
         str(year),
+        "          " if date is pd.NaT else date.strftime("%Y-%m-%d"),
+        "" if np.isnan(gameid) else add_gameid_link(forty_char_name(name), int(gameid)),
+    )
+
+
+def archaeologist_row(rank_bin, rank, date, gameid, name):
+    """Write a row of the archaeologit report."""
+    return "\n{} {} {} {}".format(
+        rank_bin.rjust(11),
+        "     " if rank == -1 else str(rank).rjust(5),
         "          " if date is pd.NaT else date.strftime("%Y-%m-%d"),
         "" if np.isnan(gameid) else add_gameid_link(forty_char_name(name), int(gameid)),
     )
@@ -458,7 +503,39 @@ def through_the_years(year):
                     ),
                 )
             )
-        report_file.write("[/c]")
+        report_file.write("[/c]\n")
+
+    click.echo("Report was output to: {}".format(filename))
+
+
+@cli.command("archaeologist")
+@click.option("--year", default=None)
+def archaeologist(year):
+    """Report of games played (by BGG ranking, binned in 1000s) in the given year."""
+    report_year = int(year) if year else datetime.datetime.now().year
+
+    plays, games, _ = base_data()
+    data = archaeologist_data(plays, games, report_year)
+
+    filename = "{} {}.txt".format(report_year, "archaeologist")
+
+    with open(filename, "w") as report_file:
+        report_file.write("[b]ARCHAEOLOGIST CHALLENGE - {}[/b]\n".format(report_year))
+        for row_num, row in data.iterrows():
+            report_file.write(
+                "{}{}".format(
+                    "[c]" if row_num == 0 else "",
+                    archaeologist_row(
+                        row["rank_bin"],
+                        int(row["rank"]),
+                        row["date"],
+                        row["gameid"],
+                        row["name"],
+                    ),
+                )
+            )
+
+        report_file.write("[/c]\n")
 
     click.echo("Report was output to: {}".format(filename))
 
