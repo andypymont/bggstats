@@ -198,7 +198,7 @@ def archaeologist_data(plays, games, year):
     )
 
     limit = max(10_000, int(play_data["rank"].max() // 1000 + 1) * 1000)
-    bins = tuple(range(1000, limit, 1000))
+    bins = tuple(range(1000, limit + 1000, 1000))
     play_data["rank_bin"] = pd.cut(
         play_data["rank"], bins, labels=[f"{bin-999}-{bin}" for bin in bins[1:]]
     )
