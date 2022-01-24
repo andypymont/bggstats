@@ -156,7 +156,7 @@ class Database:
         """Return all gameids from the games table."""
         cursor = self.data.cursor()
         cursor.execute(SQL_SELECT_GAMES)
-        return set(gameid for (gameid, _, _, _, _, _, _, _, _) in cursor.fetchall())
+        return set(gameid for gameid, *_ in cursor.fetchall())
 
     def get_missing_gameids(self):
         """
