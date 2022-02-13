@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "bggstats"
+version = "0.1.0"
+description = "Data analysis on my BoardGameGeek data"
+authors = ["Andy Pymont <andypymont@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests-cache= "0.5.0"
+boardgamegeek2 = "^1.0.1"
+pandas = "^1.4.1"
+numpy = "^1.22.2"
+click = "^8.0.3"
+tabulate = "^0.8.9"
+
+[tool.poetry.dev-dependencies]
+pylint = "^2.12.2"
+black = "^22.1.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
