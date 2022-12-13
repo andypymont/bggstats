@@ -2,11 +2,13 @@
 Fetch data from BoardGameGeek for data analysis.
 """
 
+import requests
 import sqlite3
 from datetime import datetime
-from itertools import islice
+from itertools import count, islice
 import click
 from bggthread import BGGClientWithThreadSupport
+from bs4 import BeautifulSoup
 
 GUILD = 901
 USERNAME = "NormandyWept"
@@ -64,7 +66,16 @@ SQL_SELECT_PLAYS_ALL = "SELECT * FROM plays"
 SQL_UPDATE_PLAYS = """INSERT OR REPLACE
     INTO plays (playid, username, gameid, date, quantity)
     VALUES (?, ?, ?, ?, ?)"""
-
+SQL_SCHEMA_GAME_HINDEX = """CREATE TABLE IF NOT EXISTS game_hindex (
+    gameid INTEGER PRIMARY KEY,
+    hindex INTEGER,
+    most_plays INTEGER,
+    top_ten_plays INTEGER
+)"""
+SQL_SELECT_GAME_HINDEX = "SELECT * FROM game_hindex"
+SQL_UPDATE_GAME_HINDEX = """INSERT OR REPLACE
+    INTO game_hindex (gameid, hindex, most_plays, top_ten_plays)
+    VALUES (?, ?, ?, ?)"""
 
 class Database:
     """Abstract the SQL connection for use in functions in this module."""
@@ -79,6 +90,7 @@ class Database:
         cursor.execute(SQL_SCHEMA_GUILDMEMBERS)
         cursor.execute(SQL_SCHEMA_COLLECTIONITEMS)
         cursor.execute(SQL_SCHEMA_PLAYS)
+        cursor.execute(SQL_SCHEMA_GAME_HINDEX)
         self.data.commit()
 
     def get_guild_members(self, guildid):
@@ -164,6 +176,13 @@ class Database:
         in the games table.
         """
         return self.get_all_play_gameids().difference(self.get_known_gameids())
+    
+    def update_game_hindices(self, updates):
+        """Update game hindex info per the provided list."""
+        if updates:
+            cursor = self.data.cursor()
+            cursor.executemany(SQL_UPDATE_GAME_HINDEX, updates)
+            self.data.commit()
 
 
 bgg = BGGClientWithThreadSupport()
@@ -294,6 +313,40 @@ def plays(username):
         click.echo("Recording {} plays".format(sum(p[4] for p in playlist)))
         db.update_plays(playlist)
 
+
+def game_hindex_info(gameid):
+    """Scrape BGG for the game hindex info for the given game id."""
+    click.echo(f"----- fetching hindex data for game id: {gameid}")
+    plays = []
+    finished = False
+    prev = 0
+    for page_no in count(1):
+        page = requests.get(f"https://boardgamegeek.com/playstats/thing/{gameid}/page/{page_no}")
+        soup = BeautifulSoup(page.content, 'html.parser')
+        for table_row in soup.find_all('td', class_='lf'):
+            play_count = int(table_row.find('a').text)
+            if play_count < len(plays):
+                finished = True
+                break
+            plays.append(play_count)
+        if finished or (len(plays) == prev):
+            break
+        prev = len(plays)
+
+    if len(plays) == 0:
+        return gameid, 0, 0, 0
+    
+    return gameid, len(plays), max(plays), (min(plays) if len(plays) < 10 else plays[9])
+
+@cli.command()
+def ghi():
+    """Fetch and update the database with the game hindex information for all played games."""
+    gameids = db.get_all_play_gameids()
+    click.echo("{} total games to update".format(len(gameids)))
+    for i, chunk in enumerate(partition(gameids, 100)):
+        click.echo("-- updating set {} containing {} games".format(i + 1, len(chunk)))
+        rows = [game_hindex_info(gameid) for gameid in chunk]
+        db.update_game_hindices(rows)
 
 if __name__ == "__main__":
     cli()

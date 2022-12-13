@@ -15,6 +15,7 @@ tabulate.PRESERVE_WHITESPACE = True
 SQL_SELECT_COLLECTION = "SELECT * FROM collectionitems WHERE username = ?"
 SQL_SELECT_PLAYS = "SELECT * FROM plays WHERE username = ?"
 SQL_SELECT_GAMES = "SELECT * FROM games"
+SQL_SELECT_GAME_HINDEX = "SELECT * FROM game_hindex"
 USERNAME = "NormandyWept"
 TTY_START_YEAR = 1985
 
@@ -28,6 +29,10 @@ def base_data(db_path="bgg.db", username=USERNAME):
     playdata["date"] = pd.to_datetime(playdata["date"])
     return (playdata, gamedata, collectiondata)
 
+def game_hindex_data(db_path="bgg.db"):
+    """Cretae a dataframe of the game h-index data."""
+    data = sqlite3.connect(db_path)
+    return pd.read_sql_query(SQL_SELECT_GAME_HINDEX, data)
 
 def forty_char_name(name):
     """Make name 40 characters long exactly, padding with spaces."""
