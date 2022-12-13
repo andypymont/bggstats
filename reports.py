@@ -285,6 +285,23 @@ def annual_report_data(plays, games, collection, year):
 
     return data
 
+def game_hindex_support_data(plays, games, ghi):
+    """
+    Data for the GHI Support report.
+    """
+    play_counts = plays.groupby('gameid').agg(my_plays=('quantity', 'sum'))
+
+    data = ghi.set_index('gameid').join(play_counts).join(games.set_index('gameid'))
+    data = data[data['expansion'] == 0]
+    data['plays_to_ghi'] = data['hindex'] - data['my_plays']
+
+    columns = ['name', 'most_plays', 'hindex', 'my_plays', 'plays_to_ghi']
+    data = data.sort_values(by=['plays_to_ghi'])[columns]
+
+    return (
+        data[data['plays_to_ghi'] <= 0],
+        data[(data['plays_to_ghi'] > 0) & (data['plays_to_ghi'] < 5)]
+    )
 
 @click.group()
 def cli():
@@ -541,6 +558,37 @@ def archaeologist(year):
             )
 
         report_file.write("[/c]\n")
+
+    click.echo("Report was output to: {}".format(filename))
+
+@cli.command("ghi_support")
+def ghi_support():
+    """Run a report on game h-indices and which are being supported."""
+    plays, games, _ = base_data()
+    ghi = game_hindex_data()
+
+    supporting, close = game_hindex_support_data(plays, games, ghi)
+
+    filename = "{} {}.txt".format(
+        datetime.datetime.now().strftime("%Y-%m-%d"), "ghi_support"
+    )
+
+    with open(filename, "w") as report_file:
+        report_file.write(
+            bgg_table(
+                supporting,
+                "Supporting Game H-Index: {} games".format(supporting.shape[0]),
+                ["Name", "Most Plays", "H-Index", "My Plays", "GHI-Plays"],
+            )
+        )
+        report_file.write("\n\n")
+        report_file.write(
+            bgg_table(
+                close,
+                "Within 10 plays of Game H-Index: {} games".format(close.shape[0]),
+                ["Name", "Most Plays", "H-Index", "My Plays", "GHI-Plays"],
+            )
+        )
 
     click.echo("Report was output to: {}".format(filename))
 
