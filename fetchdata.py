@@ -280,7 +280,7 @@ def games(missing_only):
     """Fetch and update the database for all known games."""
     gameids = list(db.get_missing_gameids() if missing_only else db.get_all_gameids())
     click.echo("{} total games to update".format(len(gameids)))
-    for i, chunk in enumerate(partition(gameids, 500)):
+    for i, chunk in enumerate(partition(gameids, 20)):
         click.echo("-- updating set {} containing {} games".format(i + 1, len(chunk)))
         rows = [
             (
